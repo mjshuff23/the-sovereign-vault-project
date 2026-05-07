@@ -1,0 +1,1 @@
+"""Sovereign Vault FastAPI service."""

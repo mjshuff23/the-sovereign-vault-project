@@ -1,0 +1,19 @@
+{
+  "name": "sovereign-vault",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend",
+    "worker"
+  ],
+  "scripts": {
+    "build": "npm run build -w worker && npm run build -w frontend",
+    "test": "npm run test -w worker && npm run test -w frontend",
+    "seed": "node scripts/attestation/generate.mjs && node scripts/seed-qdrant.mjs",
+    "lint": "npm run lint -w frontend"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

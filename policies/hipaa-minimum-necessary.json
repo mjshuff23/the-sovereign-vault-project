@@ -1,0 +1,6 @@
+{
+  "policy_id": "HIPAA-MINIMUM-NECESSARY",
+  "title": "HIPAA Minimum Necessary",
+  "text": "Responses must disclose only the minimum necessary protected health information for the stated care purpose. Direct identifiers such as Social Security numbers, personal email addresses, phone numbers, and full names must not leave the border guard or vault in clear text.",
+  "risk_tags": ["hipaa", "phi", "minimum-necessary"]
+}
