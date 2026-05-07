@@ -67,15 +67,23 @@ function pointId(policyId) {
 
 await waitForQdrant();
 
-await request(`/collections/${collection}`, {
-  method: "PUT",
-  body: JSON.stringify({
-    vectors: {
-      size: dimension,
-      distance: "Cosine"
-    }
-  })
-});
+try {
+  await request(`/collections/${collection}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      vectors: {
+        size: dimension,
+        distance: "Cosine"
+      }
+    })
+  });
+} catch (error) {
+  // Re-running the seed against an existing Qdrant container should upsert
+  // points instead of crashing. Qdrant's PUT /collections returns
+  // "Wrong input: Collection ... already exists" once the collection exists.
+  if (!/already exists/i.test(error?.message ?? "")) throw error;
+  console.log(`Collection "${collection}" already exists — skipping creation.`);
+}
 
 const files = (await readdir(policiesDir)).filter((file) => file.endsWith(".json"));
 const policies = await Promise.all(

@@ -160,50 +160,79 @@ export function SovereignVaultConsole() {
   }, []);
 
   useEffect(() => {
-    const socket = new WebSocket(workerWsUrl);
-    socket.onmessage = (message) => {
-      const raw = typeof message.data === "string" ? message.data : "";
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (error) {
-        const errorEvent: PipelineEvent = {
-          requestId: "local-ui",
-          node: "response",
-          status: "red",
-          message: `UI [Socket]: malformed frame discarded — ${
-            error instanceof Error ? error.message : "JSON parse error"
-          }`,
-          timestamp: new Date().toISOString()
-        };
-        setEvents((currentEvents) => [errorEvent, ...currentEvents].slice(0, 40));
-        return;
-      }
-      const validated = parsePipelineEvent(parsed);
-      if (!validated) {
-        const errorEvent: PipelineEvent = {
-          requestId: "local-ui",
-          node: "response",
-          status: "red",
-          message: "UI [Socket]: pipeline event failed shape validation",
-          timestamp: new Date().toISOString()
-        };
-        setEvents((currentEvents) => [errorEvent, ...currentEvents].slice(0, 40));
-        return;
-      }
-      applyEvent(validated);
-    };
-    socket.onerror = () => {
+    let socket: WebSocket | null = null;
+    let attempt = 0;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const pushEvent = (message: string, status: "red" | "running" = "red") => {
       const event: PipelineEvent = {
         requestId: "local-ui",
         node: "response",
-        status: "red",
-        message: "UI [Socket]: worker WebSocket unavailable; start make up",
+        status,
+        message,
         timestamp: new Date().toISOString()
       };
       setEvents((currentEvents) => [event, ...currentEvents].slice(0, 40));
     };
-    return () => socket.close();
+
+    const scheduleReconnect = () => {
+      if (stopped) return;
+      const delay = Math.min(1_000 * 2 ** attempt, 15_000);
+      attempt += 1;
+      pushEvent(
+        `UI [Socket]: reconnecting in ${Math.round(delay / 1000)}s (attempt ${attempt})`,
+        "running"
+      );
+      timer = setTimeout(connect, delay);
+    };
+
+    const connect = () => {
+      if (stopped) return;
+      socket = new WebSocket(workerWsUrl);
+
+      socket.onopen = () => {
+        attempt = 0;
+      };
+
+      socket.onmessage = (message) => {
+        const raw = typeof message.data === "string" ? message.data : "";
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw);
+        } catch (error) {
+          pushEvent(
+            `UI [Socket]: malformed frame discarded — ${
+              error instanceof Error ? error.message : "JSON parse error"
+            }`
+          );
+          return;
+        }
+        const validated = parsePipelineEvent(parsed);
+        if (!validated) {
+          pushEvent("UI [Socket]: pipeline event failed shape validation");
+          return;
+        }
+        applyEvent(validated);
+      };
+
+      socket.onerror = () => {
+        pushEvent("UI [Socket]: worker WebSocket unavailable; start make up");
+      };
+
+      socket.onclose = () => {
+        socket = null;
+        scheduleReconnect();
+      };
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      socket?.close();
+    };
   }, [applyEvent]);
 
   function loadExample(kind: keyof typeof examples) {

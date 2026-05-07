@@ -1,7 +1,6 @@
-const POLICY_FETCH_TIMEOUT_MS = Number.parseInt(
-  process.env.POLICY_FETCH_TIMEOUT_MS ?? "1500",
-  10
-);
+const _policyTimeoutRaw = Number.parseInt(process.env.POLICY_FETCH_TIMEOUT_MS ?? "1500", 10);
+const POLICY_FETCH_TIMEOUT_MS =
+  Number.isFinite(_policyTimeoutRaw) && _policyTimeoutRaw > 0 ? _policyTimeoutRaw : 1_500;
 
 export async function fetchPolicyIds(
   qdrantUrl = process.env.QDRANT_URL ?? "http://localhost:6333",

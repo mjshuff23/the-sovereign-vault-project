@@ -10,14 +10,18 @@ export ATTESTATION_SECRET
 
 .PHONY: build seed up test down vault-deps vault-test-deps
 
-vault/.venv/bin/python:
-	$(PYTHON) -m venv vault/.venv
+vault/.venv/bin/python: vault/requirements.txt
+	@if [ ! -x vault/.venv/bin/python ]; then $(PYTHON) -m venv vault/.venv; fi
 	vault/.venv/bin/pip install -r vault/requirements.txt
+	@touch vault/.venv/bin/python
 
 vault-deps: vault/.venv/bin/python
 
-vault-test-deps: vault/.venv/bin/python
+vault/.venv/.test-deps-stamp: vault/.venv/bin/python vault/requirements-test.txt
 	vault/.venv/bin/pip install -r vault/requirements-test.txt
+	@touch vault/.venv/.test-deps-stamp
+
+vault-test-deps: vault/.venv/.test-deps-stamp
 
 build: vault-deps
 	$(NPM) install

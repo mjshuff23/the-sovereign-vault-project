@@ -16,7 +16,9 @@ if (!secret) {
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const issuedAt = new Date();
-const expiresAt = new Date(issuedAt.getTime() + 10 * 60 * 1000);
+const ttlHoursRaw = Number.parseFloat(process.env.ATTESTATION_TTL_HOURS ?? "24");
+const ttlHours = Number.isFinite(ttlHoursRaw) && ttlHoursRaw > 0 ? ttlHoursRaw : 24;
+const expiresAt = new Date(issuedAt.getTime() + ttlHours * 60 * 60 * 1000);
 
 const document = {
   enclaveImage: "sovereign-vault-python-fastapi",

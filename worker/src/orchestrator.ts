@@ -26,8 +26,13 @@ type OrchestratorOptions = {
 
 const tracer = trace.getTracer("sovereign-worker");
 
-const SANITIZER_TIMEOUT_MS = Number.parseInt(process.env.SANITIZER_TIMEOUT_MS ?? "5000", 10);
-const VAULT_TIMEOUT_MS = Number.parseInt(process.env.VAULT_TIMEOUT_MS ?? "5000", 10);
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const SANITIZER_TIMEOUT_MS = parsePositiveInt(process.env.SANITIZER_TIMEOUT_MS, 5_000);
+const VAULT_TIMEOUT_MS = parsePositiveInt(process.env.VAULT_TIMEOUT_MS, 5_000);
 
 export class SovereignOrchestrator {
   private readonly sanitizerUrl: string;
@@ -227,7 +232,7 @@ export class SovereignOrchestrator {
         requestId,
         traceId,
         node: "redis",
-        status: "running",
+        status: "green",
         message: `Qdrant [Policy]: retrieved ${policyIds.length} policy context records`
       });
       return policyIds;
@@ -236,7 +241,7 @@ export class SovereignOrchestrator {
         requestId,
         traceId,
         node: "redis",
-        status: "running",
+        status: "red",
         message: `Qdrant [Policy]: lookup degraded; ${error instanceof Error ? error.message : "unknown error"}`
       });
       return [];
@@ -266,6 +271,15 @@ export class SovereignOrchestrator {
       latencyMs,
       message: reasons[0] ?? "Circuit opened red"
     });
+    if (node !== "redis") {
+      await this.emit({
+        requestId,
+        traceId,
+        node: "redis",
+        status: "red",
+        message: "Redis [Circuit]: red status committed"
+      });
+    }
     await this.emit({
       requestId,
       traceId,

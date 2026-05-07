@@ -21,7 +21,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 #[tokio::main]
 async fn main() {
-    init_tracing();
+    let provider = init_tracing();
     warm_up_patterns();
 
     let app = app();
@@ -38,6 +38,12 @@ async fn main() {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("serve sanitizer");
+
+    if let Some(provider) = provider {
+        if let Err(error) = provider.shutdown() {
+            eprintln!("failed to shut down sanitizer tracer provider: {error}");
+        }
+    }
 }
 
 pub fn app() -> Router {
@@ -104,9 +110,10 @@ async fn traceparent_echo(mut request: Request, next: Next) -> impl IntoResponse
     response
 }
 
-fn init_tracing() {
+fn init_tracing() -> Option<SdkTracerProvider> {
     global::set_text_map_propagator(TraceContextPropagator::new());
-    if env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
+
+    let provider = if env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
         match opentelemetry_otlp::SpanExporter::builder()
             .with_tonic()
             .build()
@@ -120,19 +127,25 @@ fn init_tracing() {
                     )
                     .with_batch_exporter(exporter)
                     .build();
-                global::set_tracer_provider(provider);
+                global::set_tracer_provider(provider.clone());
+                Some(provider)
             }
             Err(error) => {
                 eprintln!("failed to configure sanitizer OTLP exporter: {error}");
+                None
             }
         }
-    }
+    } else {
+        None
+    };
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::registry()
         .with(filter)
         .with(tracing_subscriber::fmt::layer().json())
         .init();
+
+    provider
 }
 
 struct HeaderExtractor<'a>(&'a HeaderMap);

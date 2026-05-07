@@ -91,17 +91,27 @@ async function shutdown(signal: string) {
   forceExit.unref();
 
   try {
+    for (const socket of sockets) {
+      try {
+        socket.close(1001, "shutting down");
+      } catch {
+        // ignore close errors
+      }
+    }
+    setTimeout(() => {
+      for (const socket of sockets) {
+        try {
+          socket.terminate();
+        } catch {
+          // ignore terminate errors
+        }
+      }
+    }, 1_000).unref();
+
     await Promise.allSettled([
       new Promise<void>((resolve) => server.close(() => resolve())),
       new Promise<void>((resolve) => wss.close(() => resolve()))
     ]);
-    for (const socket of sockets) {
-      try {
-        socket.terminate();
-      } catch {
-        // ignore terminate errors
-      }
-    }
     sockets.clear();
 
     await store.close();

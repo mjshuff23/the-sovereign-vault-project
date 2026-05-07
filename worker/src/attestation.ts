@@ -29,27 +29,44 @@ export const expectedPcrs = {
   PCR2: sha256("sovereign-vault-policy-bundle").slice(0, 64)
 };
 
-export function canonicalizeDocument(document: AttestationEnvelope["document"]): string {
+function resolveSecret(): string {
+  const secret = process.env.ATTESTATION_SECRET;
+  if (!secret) {
+    throw new Error(
+      "Worker [Attestation]: ATTESTATION_SECRET is not configured; refusing to sign or verify"
+    );
+  }
+  return secret;
+}
+
+// Simple insertion-order serializer. Producer ships this exact bytes with the
+// envelope; consumers verify against the shipped string rather than re-deriving.
+// This is NOT canonical (no key sort, no number/whitespace normalization). If a
+// caller ever needs cross-runtime regeneration, replace with RFC 8785 / JCS.
+export function serializeDocument(document: AttestationEnvelope["document"]): string {
   return JSON.stringify(document);
 }
 
+/** @deprecated Use serializeDocument. Kept for backward compatibility. */
+export const canonicalizeDocument = serializeDocument;
+
 export function signCanonicalDocument(
   canonicalDocument: string,
-  secret = process.env.ATTESTATION_SECRET ?? "local-dev-attestation-secret"
+  secret: string = resolveSecret()
 ): string {
   return createHmac("sha256", secret).update(canonicalDocument).digest("hex");
 }
 
 export function signDocument(
   document: AttestationEnvelope["document"],
-  secret = process.env.ATTESTATION_SECRET ?? "local-dev-attestation-secret"
+  secret: string = resolveSecret()
 ): string {
-  return signCanonicalDocument(canonicalizeDocument(document), secret);
+  return signCanonicalDocument(serializeDocument(document), secret);
 }
 
 export function verifyAttestation(
   envelope: AttestationEnvelope,
-  secret = process.env.ATTESTATION_SECRET ?? "local-dev-attestation-secret"
+  secret: string = resolveSecret()
 ): AttestationVerification {
   const reasons: string[] = [];
 

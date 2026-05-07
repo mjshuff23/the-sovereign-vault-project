@@ -1,10 +1,9 @@
 import Redis from "ioredis";
 import type { PipelineEvent } from "./contracts.js";
 
-const EVENTS_STREAM_MAX_LEN = Number.parseInt(
-  process.env.EVENTS_STREAM_MAX_LEN ?? "10000",
-  10
-);
+const _maxLenRaw = Number.parseInt(process.env.EVENTS_STREAM_MAX_LEN ?? "10000", 10);
+const EVENTS_STREAM_MAX_LEN =
+  Number.isFinite(_maxLenRaw) && _maxLenRaw > 0 ? _maxLenRaw : 10_000;
 
 export type RequestRecord = {
   requestId: string;

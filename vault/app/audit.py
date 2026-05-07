@@ -30,6 +30,43 @@ UNSUPPORTED_CERTAINTY_PHRASES = [
 ]
 
 
+def _check_hipaa(answer: str) -> tuple[list[str], list[str]]:
+    if any(pattern.search(answer) for pattern in HIPAA_PATTERNS):
+        return ["hipaa-leak"], [
+            "Vault [Audit]: Potential HIPAA leak detected inside TEE; process terminated"
+        ]
+    return [], []
+
+
+def _check_deceptive_alignment(lowered: str) -> tuple[list[str], list[str]]:
+    hits = [phrase for phrase in DECEPTIVE_ALIGNMENT_PHRASES if phrase in lowered]
+    if not hits:
+        return [], []
+    return ["deceptive-alignment"], [
+        f"Vault [Audit]: Deceptive alignment phrase rejected: '{phrase}'" for phrase in hits
+    ]
+
+
+def _check_clinical_certainty(lowered: str) -> tuple[list[str], list[str]]:
+    hits = [phrase for phrase in UNSUPPORTED_CERTAINTY_PHRASES if phrase in lowered]
+    if not hits:
+        return [], []
+    return ["unsupported-clinical-certainty"], [
+        f"Vault [Audit]: Unsupported clinical certainty rejected: '{phrase}'" for phrase in hits
+    ]
+
+
+def _coherent_claims(lowered: str) -> list[str]:
+    coherent: list[str] = []
+    if "[redacted:" in lowered:
+        coherent.append("scrubbed input preserved redaction boundary")
+    if any(token in lowered for token in ("consult", "clinician", "emergency")):
+        coherent.append("answer preserves clinical escalation framing")
+    if "minimum necessary" in lowered or "policy" in lowered:
+        coherent.append("answer references policy-limited disclosure")
+    return coherent
+
+
 def audit_request(payload: AuditRequest) -> AuditResponse:
     attestation_result = verify_attestation(payload.attestation)
     if not attestation_result.ok:
@@ -44,40 +81,18 @@ def audit_request(payload: AuditRequest) -> AuditResponse:
 
     answer = payload.model_answer.strip()
     lowered = answer.lower()
-    coherent: list[str] = []
     rejected: list[str] = []
     reasons: list[str] = []
 
-    if any(pattern.search(answer) for pattern in HIPAA_PATTERNS):
-        rejected.append("hipaa-leak")
-        reasons.append(
-            "Vault [Audit]: Potential HIPAA leak detected inside TEE; process terminated"
-        )
+    for tags, claim_reasons in (
+        _check_hipaa(answer),
+        _check_deceptive_alignment(lowered),
+        _check_clinical_certainty(lowered),
+    ):
+        rejected.extend(tags)
+        reasons.extend(claim_reasons)
 
-    for phrase in DECEPTIVE_ALIGNMENT_PHRASES:
-        if phrase in lowered:
-            if "deceptive-alignment" not in rejected:
-                rejected.append("deceptive-alignment")
-            reasons.append(
-                f"Vault [Audit]: Deceptive alignment phrase rejected: '{phrase}'"
-            )
-
-    for phrase in UNSUPPORTED_CERTAINTY_PHRASES:
-        if phrase in lowered:
-            if "unsupported-clinical-certainty" not in rejected:
-                rejected.append("unsupported-clinical-certainty")
-            reasons.append(
-                f"Vault [Audit]: Unsupported clinical certainty rejected: '{phrase}'"
-            )
-
-    if "[redacted:" in lowered:
-        coherent.append("scrubbed input preserved redaction boundary")
-
-    if "consult" in lowered or "clinician" in lowered or "emergency" in lowered:
-        coherent.append("answer preserves clinical escalation framing")
-
-    if "minimum necessary" in lowered or "policy" in lowered:
-        coherent.append("answer references policy-limited disclosure")
+    coherent = _coherent_claims(lowered)
 
     if rejected:
         return AuditResponse(
