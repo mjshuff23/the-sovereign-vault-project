@@ -16,6 +16,7 @@ class AttestationDocument(BaseModel):
 
 class AttestationEnvelope(BaseModel):
     document: AttestationDocument
+    canonicalDocument: str = Field(min_length=1)
     signature: str
 
 

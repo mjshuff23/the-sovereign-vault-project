@@ -31,7 +31,7 @@ class AttestationResult:
 def verify_attestation(envelope: AttestationEnvelope) -> AttestationResult:
     secret = os.getenv("ATTESTATION_SECRET", "local-dev-attestation-secret")
     document = envelope.document.model_dump()
-    canonical = json.dumps(document, separators=(",", ":"))
+    canonical = envelope.canonicalDocument
     expected_signature = hmac.new(
         secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256
     ).hexdigest()
@@ -40,6 +40,9 @@ def verify_attestation(envelope: AttestationEnvelope) -> AttestationResult:
 
     if not hmac.compare_digest(expected_signature, envelope.signature):
         reasons.append("Vault [Attestation]: signature mismatch; refusing audit task")
+
+    if not _canonical_document_matches(canonical, document):
+        reasons.append("Vault [Attestation]: canonical document does not match structured envelope")
 
     if document["enclaveImage"] != EXPECTED_IMAGE:
         reasons.append("Vault [Attestation]: enclave image identity mismatch")
@@ -53,6 +56,13 @@ def verify_attestation(envelope: AttestationEnvelope) -> AttestationResult:
         reasons.append("Vault [Attestation]: identity proof expired")
 
     return AttestationResult(ok=not reasons, reasons=reasons)
+
+
+def _canonical_document_matches(canonical: str, document: dict) -> bool:
+    try:
+        return json.loads(canonical) == document
+    except json.JSONDecodeError:
+        return False
 
 
 def _parse_iso(value: str) -> datetime:

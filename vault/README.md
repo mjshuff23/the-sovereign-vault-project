@@ -43,6 +43,7 @@ Pydantic request:
       "issuedAt": "ISO-8601",
       "expiresAt": "ISO-8601"
     },
+    "canonicalDocument": "exact JSON bytes signed by the simulator",
     "signature": "hex-hmac-sha256"
   },
   "policy_collection": "policy_context",

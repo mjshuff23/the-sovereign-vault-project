@@ -25,7 +25,7 @@
 
 ## I/O Schemas
 
-See `docs/nitro-attestation.md` for the JSON document contract.
+See `docs/nitro-attestation.md` for the JSON document contract. The generated envelope includes both the structured `document` and the exact `canonicalDocument` bytes used for the HMAC signature.
 
 ## Observability
 

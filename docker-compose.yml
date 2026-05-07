@@ -79,8 +79,10 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     environment:
-      NEXT_PUBLIC_WORKER_HTTP_URL: http://localhost:4000
-      NEXT_PUBLIC_WORKER_WS_URL: ws://localhost:4000/ws
+      # These are browser-consumed URLs. `worker:4000` is only resolvable inside
+      # the Compose network, while the user's browser reaches the exposed port.
+      NEXT_PUBLIC_WORKER_HTTP_URL: ${NEXT_PUBLIC_WORKER_HTTP_URL:-http://localhost:4000}
+      NEXT_PUBLIC_WORKER_WS_URL: ${NEXT_PUBLIC_WORKER_WS_URL:-ws://localhost:4000/ws}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

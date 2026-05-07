@@ -24,11 +24,11 @@ const document = {
   expiresAt: expiresAt.toISOString()
 };
 
-const canonical = JSON.stringify(document);
-const signature = createHmac("sha256", secret).update(canonical).digest("hex");
+const canonicalDocument = JSON.stringify(document);
+const signature = createHmac("sha256", secret).update(canonicalDocument).digest("hex");
 
 await mkdir(__dirname, { recursive: true });
-await writeFile(outPath, `${JSON.stringify({ document, signature }, null, 2)}\n`);
+await writeFile(outPath, `${JSON.stringify({ document, canonicalDocument, signature }, null, 2)}\n`);
 
 console.log(`Generated simulated Nitro attestation: ${outPath}`);
 console.log(`Expires at: ${document.expiresAt}`);

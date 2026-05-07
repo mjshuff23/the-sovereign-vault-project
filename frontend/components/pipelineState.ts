@@ -12,8 +12,10 @@ export function applyPipelineEvent(
   nodes: Array<Node<StatusNodeData>>,
   event: PipelineEvent
 ): Array<Node<StatusNodeData>> {
-  return nodes.map((node) => {
+  let matched = false;
+  const next = nodes.map((node) => {
     if (node.id !== event.node) return node;
+    matched = true;
 
     return {
       ...node,
@@ -26,6 +28,8 @@ export function applyPipelineEvent(
       }
     };
   });
+
+  return matched ? next : nodes;
 }
 
 export function resetNodes(nodes: Array<Node<StatusNodeData>>): Array<Node<StatusNodeData>> {

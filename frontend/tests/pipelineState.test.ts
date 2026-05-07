@@ -32,6 +32,43 @@ describe("pipeline state helpers", () => {
     expect(next[0].data.latency).toBe("12.3 ms");
   });
 
+  it("returns the original array when the event node id does not match any node", () => {
+    const result = applyPipelineEvent(nodes, {
+      requestId: "req-2",
+      node: "response",
+      status: "green",
+      message: "No-op event for a node outside this test fixture",
+      latencyMs: 1.23,
+      timestamp: new Date().toISOString()
+    });
+
+    expect(result).toBe(nodes);
+  });
+
+  it("preserves existing node latency when an event has no latency measurement", () => {
+    const withLatency = [
+      {
+        ...nodes[0],
+        data: {
+          ...nodes[0].data,
+          latency: "42.0 ms"
+        }
+      }
+    ];
+
+    const next = applyPipelineEvent(withLatency, {
+      requestId: "req-3",
+      node: "vault",
+      status: "green",
+      message: "Vault handled request without a new latency measurement",
+      timestamp: new Date().toISOString()
+    });
+
+    expect(next[0].data.status).toBe("green");
+    expect(next[0].data.detail).toContain("Vault handled request");
+    expect(next[0].data.latency).toBe("42.0 ms");
+  });
+
   it("resets nodes before a new audit run", () => {
     const reset = resetNodes([
       {

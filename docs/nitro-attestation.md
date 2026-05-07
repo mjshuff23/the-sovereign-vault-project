@@ -15,6 +15,7 @@
 ## Cons
 
 - HMAC-signed JSON is not a Nitro attestation document.
+- The local envelope carries the exact `canonicalDocument` bytes that were signed so Node and Python do not independently recreate the HMAC input.
 - Docker Compose does not prevent operator memory access.
 - Local HTTP does not model parent-instance vsock proxying.
 
@@ -49,6 +50,7 @@ References:
     "issuedAt": "2026-05-07T00:00:00.000Z",
     "expiresAt": "2026-05-07T00:10:00.000Z"
   },
+  "canonicalDocument": "{\"enclaveImage\":\"sovereign-vault-python-fastapi\",...}",
   "signature": "hex-hmac-sha256"
 }
 ```

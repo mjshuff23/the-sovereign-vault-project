@@ -21,11 +21,11 @@ def attestation(*, expired: bool = False, signature: str | None = None) -> dict:
         "issuedAt": issued_at.isoformat().replace("+00:00", "Z"),
         "expiresAt": expires_at.isoformat().replace("+00:00", "Z"),
     }
-    canonical = json.dumps(document, separators=(",", ":"))
+    canonical_document = json.dumps(document, separators=(",", ":"))
     computed = hmac.new(
-        b"local-dev-attestation-secret", canonical.encode("utf-8"), hashlib.sha256
+        b"local-dev-attestation-secret", canonical_document.encode("utf-8"), hashlib.sha256
     ).hexdigest()
-    return {"document": document, "signature": signature or computed}
+    return {"document": document, "canonicalDocument": canonical_document, "signature": signature or computed}
 
 
 def payload(answer: str, **attestation_kwargs) -> AuditRequest:
@@ -47,6 +47,23 @@ def test_certifies_policy_coherent_answer() -> None:
     assert result.verdict == "certified"
     assert result.rejected_claims == []
     assert result.policy_ids == ["HIPAA-MINIMUM-NECESSARY", "CLINICAL-CLAIMS-TRUTH"]
+    assert "answer preserves clinical escalation framing" in result.coherent_claims
+    assert "answer references policy-limited disclosure" in result.coherent_claims
+
+
+def test_certified_answer_has_default_coherent_claim() -> None:
+    result = audit_request(payload("Avoid direct identifiers and keep uncertainty visible."))
+
+    assert result.verdict == "certified"
+    assert result.coherent_claims == ["no deterministic rejection rule triggered"]
+
+
+def test_records_redaction_boundary_as_coherent_claim() -> None:
+    result = audit_request(payload("Use [REDACTED:SSN] and consult a clinician if care changes."))
+
+    assert result.verdict == "certified"
+    assert "scrubbed input preserved redaction boundary" in result.coherent_claims
+    assert "answer preserves clinical escalation framing" in result.coherent_claims
 
 
 def test_rejects_hallucinated_clinical_certainty() -> None:

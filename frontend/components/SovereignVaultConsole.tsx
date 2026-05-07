@@ -143,16 +143,14 @@ export function SovereignVaultConsole() {
       applyEvent(JSON.parse(message.data as string) as PipelineEvent);
     };
     socket.onerror = () => {
-      setEvents((current) => [
-        {
-          requestId: "local-ui",
-          node: "response",
-          status: "red",
-          message: "UI [Socket]: worker WebSocket unavailable; start make up",
-          timestamp: new Date().toISOString()
-        },
-        ...current
-      ]);
+      const event: PipelineEvent = {
+        requestId: "local-ui",
+        node: "response",
+        status: "red",
+        message: "UI [Socket]: worker WebSocket unavailable; start make up",
+        timestamp: new Date().toISOString()
+      };
+      setEvents((currentEvents) => [event, ...currentEvents].slice(0, 40));
     };
     return () => socket.close();
   }, [applyEvent]);
@@ -169,29 +167,53 @@ export function SovereignVaultConsole() {
     setStatus("idle");
     setTraceId("pending");
     setNodes((current) => resetNodes(current));
-    const response = await fetch(`${workerHttpUrl}/v1/ingest`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ patientQuestion, modelAnswer, actor })
-    });
-    const body = (await response.json()) as { traceId?: string; status?: "green" | "red"; reasons?: string[] };
-    if (body.traceId) setTraceId(body.traceId);
-    if (body.status) setStatus(body.status);
-    const reasons = body.reasons ?? [];
-    if (reasons.length) {
-      setEvents((current) => [
-        ...reasons.map((reason) => ({
-          requestId: "http-response",
-          node: "response" as const,
-          status: body.status ?? "red",
-          message: reason,
-          traceId: body.traceId,
-          timestamp: new Date().toISOString()
-        })),
-        ...current
-      ]);
+    try {
+      const response = await fetch(`${workerHttpUrl}/v1/ingest`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ patientQuestion, modelAnswer, actor })
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        traceId?: string;
+        status?: "green" | "red";
+        reasons?: string[];
+      };
+
+      if (!response.ok) {
+        throw new Error(body.reasons?.join("; ") || `worker returned HTTP ${response.status}`);
+      }
+
+      if (body.traceId) setTraceId(body.traceId);
+      if (body.status) setStatus(body.status);
+      const reasons = body.reasons ?? [];
+      if (reasons.length) {
+        setEvents((current) => [
+          ...reasons.map((reason) => ({
+            requestId: "http-response",
+            node: "response" as const,
+            status: body.status ?? "red",
+            message: reason,
+            traceId: body.traceId,
+            timestamp: new Date().toISOString()
+          })),
+          ...current
+        ].slice(0, 40));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown ingest failure";
+      console.error("Sovereign Vault ingest failed", error);
+      setStatus("red");
+      const event: PipelineEvent = {
+        requestId: "local-ui",
+        node: "response",
+        status: "red",
+        message: `UI [HTTP]: ${message}`,
+        timestamp: new Date().toISOString()
+      };
+      setEvents((current) => [event, ...current].slice(0, 40));
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   }
 
   const statusLabel =

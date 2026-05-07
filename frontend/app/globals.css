@@ -272,6 +272,14 @@ textarea:focus {
   font-weight: 800;
 }
 
+.nodeIdle {
+  border-color: var(--border);
+}
+
+.nodeIdle .nodeIcon {
+  color: var(--muted);
+}
+
 .nodeRunning {
   border-color: rgba(240, 183, 77, 0.7);
 }

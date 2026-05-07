@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SovereignOrchestrator } from "../src/orchestrator.js";
-import { expectedImage, expectedPcrs, signDocument } from "../src/attestation.js";
+import { canonicalizeDocument, expectedImage, expectedPcrs, signDocument } from "../src/attestation.js";
 import { MemoryCircuitStore } from "../src/store.js";
 
 function validAttestation() {
@@ -13,7 +13,7 @@ function validAttestation() {
     expiresAt: new Date(Date.now() + 60_000).toISOString()
   };
 
-  return { document, signature: signDocument(document) };
+  return { document, canonicalDocument: canonicalizeDocument(document), signature: signDocument(document) };
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
