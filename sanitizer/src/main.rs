@@ -15,7 +15,7 @@ use opentelemetry::{
 use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::SdkTracerProvider, Resource};
 use sovereign_sanitizer::{scrub_text, warm_up_patterns, ScrubDecision, ScrubRequest, ScrubResponse};
 use std::{env, net::SocketAddr};
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::trace::TraceLayer;
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -46,7 +46,6 @@ pub fn app() -> Router {
         .route("/v1/scrub", post(scrub))
         .layer(middleware::from_fn(traceparent_echo))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
 }
 
 async fn health() -> impl IntoResponse {
@@ -154,7 +153,22 @@ async fn shutdown_signal() {
             .await
             .expect("install Ctrl+C handler");
     };
-    ctrl_c.await;
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 #[cfg(test)]

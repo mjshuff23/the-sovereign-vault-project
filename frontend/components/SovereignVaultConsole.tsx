@@ -17,6 +17,28 @@ import type { PipelineEvent, StatusNodeData } from "./types";
 const workerHttpUrl = process.env.NEXT_PUBLIC_WORKER_HTTP_URL ?? "http://localhost:4000";
 const workerWsUrl = process.env.NEXT_PUBLIC_WORKER_WS_URL ?? "ws://localhost:4000/ws";
 
+const VALID_NODES = new Set(["ingest", "scrub", "attestation", "vault", "redis", "response"]);
+const VALID_STATUSES = new Set(["idle", "running", "green", "red"]);
+
+function parsePipelineEvent(raw: unknown): PipelineEvent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const candidate = raw as Record<string, unknown>;
+  if (
+    typeof candidate.requestId !== "string" ||
+    typeof candidate.message !== "string" ||
+    typeof candidate.timestamp !== "string" ||
+    typeof candidate.node !== "string" ||
+    typeof candidate.status !== "string" ||
+    !VALID_NODES.has(candidate.node) ||
+    !VALID_STATUSES.has(candidate.status)
+  ) {
+    return null;
+  }
+  if (candidate.traceId !== undefined && typeof candidate.traceId !== "string") return null;
+  if (candidate.latencyMs !== undefined && typeof candidate.latencyMs !== "number") return null;
+  return candidate as PipelineEvent;
+}
+
 const initialNodes: Array<Node<StatusNodeData>> = [
   {
     id: "ingest",
@@ -140,7 +162,36 @@ export function SovereignVaultConsole() {
   useEffect(() => {
     const socket = new WebSocket(workerWsUrl);
     socket.onmessage = (message) => {
-      applyEvent(JSON.parse(message.data as string) as PipelineEvent);
+      const raw = typeof message.data === "string" ? message.data : "";
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (error) {
+        const errorEvent: PipelineEvent = {
+          requestId: "local-ui",
+          node: "response",
+          status: "red",
+          message: `UI [Socket]: malformed frame discarded — ${
+            error instanceof Error ? error.message : "JSON parse error"
+          }`,
+          timestamp: new Date().toISOString()
+        };
+        setEvents((currentEvents) => [errorEvent, ...currentEvents].slice(0, 40));
+        return;
+      }
+      const validated = parsePipelineEvent(parsed);
+      if (!validated) {
+        const errorEvent: PipelineEvent = {
+          requestId: "local-ui",
+          node: "response",
+          status: "red",
+          message: "UI [Socket]: pipeline event failed shape validation",
+          timestamp: new Date().toISOString()
+        };
+        setEvents((currentEvents) => [errorEvent, ...currentEvents].slice(0, 40));
+        return;
+      }
+      applyEvent(validated);
     };
     socket.onerror = () => {
       const event: PipelineEvent = {

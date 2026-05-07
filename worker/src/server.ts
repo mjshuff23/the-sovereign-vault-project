@@ -76,11 +76,40 @@ server.listen(port, () => {
   console.log(`sovereign worker listening on :${port}`);
 });
 
-async function shutdown() {
-  await store.close();
-  await shutdownTelemetry();
-  server.close();
+let shuttingDown = false;
+const SHUTDOWN_TIMEOUT_MS = Number.parseInt(process.env.SHUTDOWN_TIMEOUT_MS ?? "10000", 10);
+
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`sovereign worker received ${signal}; draining`);
+
+  const forceExit = setTimeout(() => {
+    console.error("sovereign worker shutdown timed out; forcing exit");
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  forceExit.unref();
+
+  try {
+    await Promise.allSettled([
+      new Promise<void>((resolve) => server.close(() => resolve())),
+      new Promise<void>((resolve) => wss.close(() => resolve()))
+    ]);
+    for (const socket of sockets) {
+      try {
+        socket.terminate();
+      } catch {
+        // ignore terminate errors
+      }
+    }
+    sockets.clear();
+
+    await store.close();
+    await shutdownTelemetry();
+  } finally {
+    clearTimeout(forceExit);
+  }
 }
 
-process.on("SIGINT", () => void shutdown());
-process.on("SIGTERM", () => void shutdown());
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));

@@ -12,13 +12,25 @@ const policiesDir = new URL("policies/", root);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function request(path, options = {}) {
-  const response = await fetch(`${qdrantUrl}${path}`, {
-    ...options,
-    headers: {
-      "content-type": "application/json",
-      ...(options.headers ?? {})
+  const signal = options.signal ?? AbortSignal.timeout(5_000);
+  let response;
+  try {
+    response = await fetch(`${qdrantUrl}${path}`, {
+      ...options,
+      signal,
+      headers: {
+        "content-type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  } catch (error) {
+    if (error?.name === "AbortError" || error?.name === "TimeoutError") {
+      throw new Error(
+        `${options.method ?? "GET"} ${qdrantUrl}${path} timed out after 5s`
+      );
     }
-  });
+    throw error;
+  }
 
   if (!response.ok) {
     const body = await response.text();

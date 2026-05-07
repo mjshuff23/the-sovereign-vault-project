@@ -1,3 +1,8 @@
+const POLICY_FETCH_TIMEOUT_MS = Number.parseInt(
+  process.env.POLICY_FETCH_TIMEOUT_MS ?? "1500",
+  10
+);
+
 export async function fetchPolicyIds(
   qdrantUrl = process.env.QDRANT_URL ?? "http://localhost:6333",
   collection = process.env.QDRANT_COLLECTION ?? "policy_context",
@@ -6,7 +11,8 @@ export async function fetchPolicyIds(
   const response = await fetcher(`${qdrantUrl}/collections/${collection}/points/scroll`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ limit: 8, with_payload: true, with_vector: false })
+    body: JSON.stringify({ limit: 8, with_payload: true, with_vector: false }),
+    signal: AbortSignal.timeout(POLICY_FETCH_TIMEOUT_MS)
   });
 
   if (!response.ok) {

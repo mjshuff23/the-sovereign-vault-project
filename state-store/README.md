@@ -26,9 +26,10 @@
 
 ## I/O Schemas
 
-- `sv:req:{requestId}` stores JSON request status.
-- `sv:circuit:{requestId}` stores `green` or `red`.
-- `sv:events` stores append-only pipeline event fields.
+- `sv:req:{requestId}` stores the JSON request payload.
+- `sv:req:{requestId}:status` stores `green` or `red` for a single request outcome (per-request flag).
+- `sv:circuit:{resource}` stores `green` or `red` for a downstream resource (e.g. `sv:circuit:vault`, `sv:circuit:sanitizer`). This is a true breaker keyed on the guarded resource so repeated failures accumulate against the same key.
+- `sv:events` is a single append-only Redis Stream. POC convenience: in production prefer per-pipeline or per-session streams to avoid fan-out bottlenecks, and bound the stream length with `MAXLEN ~`.
 
 ## Observability
 

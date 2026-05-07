@@ -21,4 +21,58 @@ describe("ingestRequestSchema", () => {
       })
     ).toThrow();
   });
+
+  it.each(["clinician", "patient", "admin"] as const)("accepts the %s actor", (actor) => {
+    const parsed = ingestRequestSchema.parse({
+      patientQuestion: "Question",
+      modelAnswer: "Answer",
+      actor
+    });
+    expect(parsed.actor).toBe(actor);
+  });
+
+  it("rejects an empty actor string", () => {
+    expect(() =>
+      ingestRequestSchema.parse({
+        patientQuestion: "Question",
+        modelAnswer: "Answer",
+        actor: ""
+      })
+    ).toThrow();
+  });
+
+  it("rejects payloads missing patientQuestion", () => {
+    expect(() =>
+      ingestRequestSchema.parse({
+        modelAnswer: "Answer",
+        actor: "clinician"
+      })
+    ).toThrow();
+  });
+
+  it("rejects payloads missing modelAnswer", () => {
+    expect(() =>
+      ingestRequestSchema.parse({
+        patientQuestion: "Question",
+        actor: "clinician"
+      })
+    ).toThrow();
+  });
+
+  it("rejects empty-string patientQuestion / modelAnswer", () => {
+    expect(() =>
+      ingestRequestSchema.parse({
+        patientQuestion: "",
+        modelAnswer: "Answer",
+        actor: "clinician"
+      })
+    ).toThrow();
+    expect(() =>
+      ingestRequestSchema.parse({
+        patientQuestion: "Question",
+        modelAnswer: "",
+        actor: "clinician"
+      })
+    ).toThrow();
+  });
 });

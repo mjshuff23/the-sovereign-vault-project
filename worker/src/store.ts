@@ -1,6 +1,11 @@
 import Redis from "ioredis";
 import type { PipelineEvent } from "./contracts.js";
 
+const EVENTS_STREAM_MAX_LEN = Number.parseInt(
+  process.env.EVENTS_STREAM_MAX_LEN ?? "10000",
+  10
+);
+
 export type RequestRecord = {
   requestId: string;
   status: "green" | "red";
@@ -42,11 +47,27 @@ export class RedisCircuitStore implements CircuitStore {
 
   async appendEvent(event: PipelineEvent): Promise<void> {
     const client = await this.client();
-    await client.xadd("sv:events", "*", "event", JSON.stringify(event));
+    await client.xadd(
+      "sv:events",
+      "MAXLEN",
+      "~",
+      EVENTS_STREAM_MAX_LEN,
+      "*",
+      "event",
+      JSON.stringify(event)
+    );
   }
 
   async close(): Promise<void> {
-    this.redis.disconnect();
+    if (this.redis.status === "wait" || this.redis.status === "end") {
+      this.redis.disconnect();
+      return;
+    }
+    try {
+      await this.redis.quit();
+    } catch {
+      this.redis.disconnect();
+    }
   }
 }
 

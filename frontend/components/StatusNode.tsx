@@ -27,7 +27,7 @@ export function StatusNode({ data }: NodeProps) {
       </div>
       <div className="nodeRole">{nodeData.role}</div>
       <div className="nodeDetail">{nodeData.detail}</div>
-      {nodeData.latency ? <div className="nodeLatency">{nodeData.latency}</div> : null}
+      {nodeData.latency != null ? <div className="nodeLatency">{nodeData.latency}</div> : null}
       <Handle type="source" position={Position.Right} />
     </div>
   );

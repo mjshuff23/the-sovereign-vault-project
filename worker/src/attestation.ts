@@ -52,34 +52,62 @@ export function verifyAttestation(
   secret = process.env.ATTESTATION_SECRET ?? "local-dev-attestation-secret"
 ): AttestationVerification {
   const reasons: string[] = [];
+
+  const envelopeRecord =
+    envelope && typeof envelope === "object" ? (envelope as Record<string, unknown>) : null;
+  if (!envelopeRecord) {
+    return {
+      ok: false,
+      reasons: ["Worker [Attestation]: envelope is missing or not an object"]
+    };
+  }
+
   const canonicalDocument =
-    typeof envelope.canonicalDocument === "string" ? envelope.canonicalDocument : "";
+    typeof envelopeRecord.canonicalDocument === "string" ? envelopeRecord.canonicalDocument : "";
   if (!canonicalDocument) {
     reasons.push("Worker [Attestation]: canonical document missing");
   }
-  const expectedSignature = signCanonicalDocument(canonicalDocument, secret);
-  const actual = Buffer.from(envelope.signature, "hex");
-  const expected = Buffer.from(expectedSignature, "hex");
 
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-    reasons.push("Worker [Attestation]: signature mismatch; refusing to send audit task");
+  const signature = typeof envelopeRecord.signature === "string" ? envelopeRecord.signature : "";
+  if (!signature) {
+    reasons.push("Worker [Attestation]: signature missing");
   }
 
-  if (!canonicalDocumentMatchesEnvelope(canonicalDocument, envelope.document)) {
+  const document = isAttestationDocument(envelopeRecord.document) ? envelopeRecord.document : null;
+  if (!document) {
+    reasons.push("Worker [Attestation]: structured document missing or malformed");
+    return { ok: false, reasons };
+  }
+
+  if (signature && /^[0-9a-fA-F]*$/.test(signature) && signature.length % 2 === 0) {
+    const expectedSignature = signCanonicalDocument(canonicalDocument, secret);
+    const actual = Buffer.from(signature, "hex");
+    const expected = Buffer.from(expectedSignature, "hex");
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+      reasons.push("Worker [Attestation]: signature mismatch; refusing to send audit task");
+    }
+  } else if (signature) {
+    reasons.push("Worker [Attestation]: signature is not valid hex");
+  }
+
+  if (!canonicalDocumentMatchesEnvelope(canonicalDocument, document)) {
     reasons.push("Worker [Attestation]: canonical document does not match structured envelope");
   }
 
-  if (envelope.document.enclaveImage !== expectedImage) {
+  if (document.enclaveImage !== expectedImage) {
     reasons.push("Worker [Attestation]: enclave image identity mismatch");
   }
 
   for (const [pcr, expectedPcr] of Object.entries(expectedPcrs)) {
-    if (envelope.document.pcrs[pcr] !== expectedPcr) {
+    if (document.pcrs[pcr] !== expectedPcr) {
       reasons.push(`Worker [Attestation]: ${pcr} measurement mismatch`);
     }
   }
 
-  if (new Date(envelope.document.expiresAt).getTime() <= Date.now()) {
+  const expiresAtMs = new Date(document.expiresAt).getTime();
+  if (Number.isNaN(expiresAtMs)) {
+    reasons.push("Worker [Attestation]: invalid or missing expiresAt");
+  } else if (expiresAtMs <= Date.now()) {
     reasons.push("Worker [Attestation]: identity proof expired");
   }
 

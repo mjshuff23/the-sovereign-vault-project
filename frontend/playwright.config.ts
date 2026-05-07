@@ -8,7 +8,8 @@ export default defineConfig({
   webServer: {
     command: "npm run dev -w frontend",
     url: baseURL,
-    reuseExistingServer: true
+    reuseExistingServer: !process.env.CI,
+    timeout: 180_000
   },
   use: {
     baseURL,

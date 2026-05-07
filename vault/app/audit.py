@@ -56,19 +56,19 @@ def audit_request(payload: AuditRequest) -> AuditResponse:
 
     for phrase in DECEPTIVE_ALIGNMENT_PHRASES:
         if phrase in lowered:
-            rejected.append("deceptive-alignment")
+            if "deceptive-alignment" not in rejected:
+                rejected.append("deceptive-alignment")
             reasons.append(
                 f"Vault [Audit]: Deceptive alignment phrase rejected: '{phrase}'"
             )
-            break
 
     for phrase in UNSUPPORTED_CERTAINTY_PHRASES:
         if phrase in lowered:
-            rejected.append("unsupported-clinical-certainty")
+            if "unsupported-clinical-certainty" not in rejected:
+                rejected.append("unsupported-clinical-certainty")
             reasons.append(
                 f"Vault [Audit]: Unsupported clinical certainty rejected: '{phrase}'"
             )
-            break
 
     if "[redacted:" in lowered:
         coherent.append("scrubbed input preserved redaction boundary")

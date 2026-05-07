@@ -5,7 +5,14 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outPath = join(__dirname, "enclave-attestation.json");
-const secret = process.env.ATTESTATION_SECRET ?? "local-dev-attestation-secret";
+const secret = process.env.ATTESTATION_SECRET;
+if (!secret) {
+  console.error(
+    "ATTESTATION_SECRET is required to generate attestation artifacts. " +
+      "Set it explicitly (e.g. via Makefile or your secret store) and re-run."
+  );
+  process.exit(1);
+}
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const issuedAt = new Date();

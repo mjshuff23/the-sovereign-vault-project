@@ -29,7 +29,14 @@ class AttestationResult:
 
 
 def verify_attestation(envelope: AttestationEnvelope) -> AttestationResult:
-    secret = os.getenv("ATTESTATION_SECRET", "local-dev-attestation-secret")
+    secret = os.getenv("ATTESTATION_SECRET")
+    if not secret:
+        return AttestationResult(
+            ok=False,
+            reasons=[
+                "Vault [Attestation]: ATTESTATION_SECRET is not configured; refusing to verify"
+            ],
+        )
     document = envelope.document.model_dump()
     canonical = envelope.canonicalDocument
     expected_signature = hmac.new(

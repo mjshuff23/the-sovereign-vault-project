@@ -2,5 +2,7 @@
   "policy_id": "HIPAA-MINIMUM-NECESSARY",
   "title": "HIPAA Minimum Necessary",
   "text": "Responses must disclose only the minimum necessary protected health information for the stated care purpose. Direct identifiers such as Social Security numbers, personal email addresses, phone numbers, and full names must not leave the border guard or vault in clear text.",
+  "scope": "poc-partial-coverage",
+  "scope_note": "POC subset. Detection covers SSN, email, phone, and name markers only. The 18 HIPAA Safe Harbor categories (45 CFR 164.514(b)(2)) include additional identifiers not enforced by this policy entry: medical record numbers, health plan beneficiary numbers, account numbers, certificate/license numbers, vehicle and device identifiers, web URLs, IP addresses, biometric identifiers, full-face photos, dates more granular than year, geographic subdivisions smaller than a state, and any other unique identifying number, characteristic, or code.",
   "risk_tags": ["hipaa", "phi", "minimum-necessary"]
 }

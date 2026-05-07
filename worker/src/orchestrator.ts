@@ -1,4 +1,4 @@
-import { context, propagation, trace } from "@opentelemetry/api";
+import { context, propagation, SpanStatusCode, trace } from "@opentelemetry/api";
 import { randomUUID } from "node:crypto";
 import {
   ingestRequestSchema,
@@ -26,6 +26,9 @@ type OrchestratorOptions = {
 
 const tracer = trace.getTracer("sovereign-worker");
 
+const SANITIZER_TIMEOUT_MS = Number.parseInt(process.env.SANITIZER_TIMEOUT_MS ?? "5000", 10);
+const VAULT_TIMEOUT_MS = Number.parseInt(process.env.VAULT_TIMEOUT_MS ?? "5000", 10);
+
 export class SovereignOrchestrator {
   private readonly sanitizerUrl: string;
   private readonly vaultUrl: string;
@@ -48,116 +51,124 @@ export class SovereignOrchestrator {
   async ingest(raw: unknown): Promise<IngestResponse> {
     const input = ingestRequestSchema.parse(raw);
     return tracer.startActiveSpan("worker.ingest", async (span) => {
-      const requestId = input.requestId ?? randomUUID();
-      const traceId = span.spanContext().traceId;
-      span.setAttribute("request.id", requestId);
-      span.setAttribute("actor", input.actor);
+      try {
+        const requestId = input.requestId ?? randomUUID();
+        const traceId = span.spanContext().traceId;
+        span.setAttribute("request.id", requestId);
+        span.setAttribute("actor", input.actor);
 
-      const headerCarrier: Record<string, string> = {};
-      propagation.inject(context.active(), headerCarrier);
+        const headerCarrier: Record<string, string> = {};
+        propagation.inject(context.active(), headerCarrier);
 
-      await this.emit({
-        requestId,
-        traceId,
-        node: "ingest",
-        status: "running",
-        message: `Worker [Ingest]: accepted ${input.actor} request`
-      });
+        await this.emit({
+          requestId,
+          traceId,
+          node: "ingest",
+          status: "running",
+          message: `Worker [Ingest]: accepted ${input.actor} request`
+        });
 
-      await this.emit({
-        requestId,
-        traceId,
-        node: "scrub",
-        status: "running",
-        message: "Rust [Scrub]: scanning border payload for direct identifiers"
-      });
+        await this.emit({
+          requestId,
+          traceId,
+          node: "scrub",
+          status: "running",
+          message: "Rust [Scrub]: scanning border payload for direct identifiers"
+        });
 
-      const scrubStarted = performance.now();
-      const scrub = await this.callSanitizer(requestId, input.patientQuestion, headerCarrier);
-      const scrubLatencyMs = performance.now() - scrubStarted;
+        const scrubStarted = performance.now();
+        const scrub = await this.callSanitizer(requestId, input.patientQuestion, headerCarrier);
+        const scrubLatencyMs = performance.now() - scrubStarted;
 
-      if (scrub.decision === "blocked") {
-        const reasons = scrub.findings.map(
-          (finding) => `Rust [Scrub]: ${finding.reason} at byte ${finding.start}`
-        );
-        await this.red(requestId, traceId, "scrub", reasons, scrubLatencyMs);
-        span.setAttribute("sovereign.status", "red");
-        span.end();
-        return { requestId, status: "red" as const, traceId, reasons };
-      }
+        if (scrub.decision === "blocked") {
+          const reasons = scrub.findings.map(
+            (finding) => `Rust [Scrub]: ${finding.reason} at byte ${finding.start}`
+          );
+          await this.red(requestId, traceId, "scrub", reasons, scrubLatencyMs);
+          span.setAttribute("sovereign.status", "red");
+          return { requestId, status: "red" as const, traceId, reasons };
+        }
 
-      await this.emit({
-        requestId,
-        traceId,
-        node: "scrub",
-        status: "green" as const,
-        latencyMs: scrubLatencyMs,
-        message: `Rust [Scrub]: no direct identifiers found in ${Math.round(scrubLatencyMs * 1000)}us`
-      });
+        await this.emit({
+          requestId,
+          traceId,
+          node: "scrub",
+          status: "green" as const,
+          latencyMs: scrubLatencyMs,
+          message: `Rust [Scrub]: no direct identifiers found in ${Math.round(scrubLatencyMs * 1000)}us`
+        });
 
-      const attestation = await this.attestationLoader();
-      const attestationVerification = verifyAttestation(attestation);
-      if (!attestationVerification.ok) {
-        await this.red(requestId, traceId, "attestation", attestationVerification.reasons);
-        span.setAttribute("sovereign.status", "red");
-        span.end();
+        const attestation = await this.attestationLoader();
+        const attestationVerification = verifyAttestation(attestation);
+        if (!attestationVerification.ok) {
+          await this.red(requestId, traceId, "attestation", attestationVerification.reasons);
+          span.setAttribute("sovereign.status", "red");
+          return {
+            requestId,
+            status: "red" as const,
+            traceId,
+            reasons: attestationVerification.reasons
+          };
+        }
+
+        await this.emit({
+          requestId,
+          traceId,
+          node: "attestation",
+          status: "green",
+          message: "Worker [Attestation]: enclave identity proof accepted"
+        });
+
+        const policyIds = await this.safePolicyIds(traceId, requestId);
+
+        await this.emit({
+          requestId,
+          traceId,
+          node: "vault",
+          status: "running",
+          message: "Vault [Audit]: entering simulated Nitro enclave boundary"
+        });
+
+        const vaultStarted = performance.now();
+        const audit = await this.callVault(input, requestId, scrub.sanitized_text, attestation, policyIds, headerCarrier);
+        const vaultLatencyMs = performance.now() - vaultStarted;
+
+        if (audit.verdict === "rejected") {
+          await this.red(requestId, traceId, "vault", audit.reasons, vaultLatencyMs);
+          span.setAttribute("sovereign.status", "red");
+          return { requestId, status: "red" as const, traceId, reasons: audit.reasons };
+        }
+
+        await this.emit({
+          requestId,
+          traceId,
+          node: "vault",
+          status: "green" as const,
+          latencyMs: vaultLatencyMs,
+          message: "Vault [Audit]: Certified Truth allowed to leave enclave"
+        });
+
+        await this.green(requestId, traceId, input.modelAnswer, audit.reasons);
+        span.setAttribute("sovereign.status", "green");
+
         return {
           requestId,
-          status: "red" as const,
+          status: "green" as const,
           traceId,
-          reasons: attestationVerification.reasons
+          certifiedAnswer: input.modelAnswer,
+          reasons: audit.reasons
         };
-      }
-
-      await this.emit({
-        requestId,
-        traceId,
-        node: "attestation",
-        status: "green",
-        message: "Worker [Attestation]: enclave identity proof accepted"
-      });
-
-      const policyIds = await this.safePolicyIds(traceId, requestId);
-
-      await this.emit({
-        requestId,
-        traceId,
-        node: "vault",
-        status: "running",
-        message: "Vault [Audit]: entering simulated Nitro enclave boundary"
-      });
-
-      const vaultStarted = performance.now();
-      const audit = await this.callVault(input, requestId, scrub.sanitized_text, attestation, policyIds, headerCarrier);
-      const vaultLatencyMs = performance.now() - vaultStarted;
-
-      if (audit.verdict === "rejected") {
-        await this.red(requestId, traceId, "vault", audit.reasons, vaultLatencyMs);
-        span.setAttribute("sovereign.status", "red");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "unknown orchestration failure";
+        if (error instanceof Error) {
+          span.recordException(error);
+        }
+        span.setStatus({ code: SpanStatusCode.ERROR, message });
+        span.setAttribute("sovereign.status", "error");
+        throw error;
+      } finally {
         span.end();
-        return { requestId, status: "red" as const, traceId, reasons: audit.reasons };
       }
-
-      await this.emit({
-        requestId,
-        traceId,
-        node: "vault",
-        status: "green" as const,
-        latencyMs: vaultLatencyMs,
-        message: "Vault [Audit]: Certified Truth allowed to leave enclave"
-      });
-
-      await this.green(requestId, traceId, input.modelAnswer, audit.reasons);
-      span.setAttribute("sovereign.status", "green");
-      span.end();
-
-      return {
-        requestId,
-        status: "green" as const,
-        traceId,
-        certifiedAnswer: input.modelAnswer,
-        reasons: audit.reasons
-      };
     });
   }
 
@@ -169,7 +180,8 @@ export class SovereignOrchestrator {
     const response = await this.fetcher(`${this.sanitizerUrl}/v1/scrub`, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
-      body: JSON.stringify({ request_id: requestId, text })
+      body: JSON.stringify({ request_id: requestId, text }),
+      signal: AbortSignal.timeout(SANITIZER_TIMEOUT_MS)
     });
 
     if (!response.ok) {
@@ -197,7 +209,8 @@ export class SovereignOrchestrator {
         attestation,
         policy_collection: "policy_context",
         policy_ids: policyIds
-      })
+      }),
+      signal: AbortSignal.timeout(VAULT_TIMEOUT_MS)
     });
 
     if (!response.ok) {

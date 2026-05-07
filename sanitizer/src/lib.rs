@@ -91,21 +91,18 @@ pub fn scrub_text(request: &ScrubRequest) -> ScrubResponse {
 
     candidates.sort_by_key(|finding| (finding.start, finding.end));
 
-    let mut findings = Vec::new();
+    let findings = candidates.clone();
+
     let mut cursor = 0;
     let mut sanitized = String::with_capacity(request.text.len());
-
-    for finding in candidates {
-        if finding.start < cursor {
+    for candidate in &candidates {
+        if candidate.start < cursor {
             continue;
         }
-
-        sanitized.push_str(&request.text[cursor..finding.start]);
-        sanitized.push_str(&finding.replacement);
-        cursor = finding.end;
-        findings.push(finding);
+        sanitized.push_str(&request.text[cursor..candidate.start]);
+        sanitized.push_str(&candidate.replacement);
+        cursor = candidate.end;
     }
-
     sanitized.push_str(&request.text[cursor..]);
 
     let decision = if findings.is_empty() {
