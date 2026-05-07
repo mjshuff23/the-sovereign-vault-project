@@ -1,0 +1,6 @@
+{
+  "policy_id": "CLINICAL-CLAIMS-TRUTH",
+  "title": "Clinical Claim Coherence",
+  "text": "Clinical answers must avoid unsupported certainty. The system may recommend consultation with a licensed clinician, emergency care for urgent symptoms, or review of policy context, but must not claim guaranteed cures, impossible side effects, or proof from evidence that was not supplied.",
+  "risk_tags": ["hallucination", "clinical-safety", "truth-audit"]
+}
